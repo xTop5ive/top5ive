@@ -1,0 +1,47 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Profile {
+  id        String   @id          // Supabase auth user id (UUID)
+  handle    String   @unique
+  name      String
+  avatarUrl String?
+  bio       String?
+  createdAt DateTime @default(now())
+  playlists Playlist[]
+}
+
+model Playlist {
+  id          String       @id @default(cuid())
+  ownerId     String
+  owner       Profile      @relation(fields: [ownerId], references: [id])
+  title       String
+  coverUrl    String?
+  description String?
+  isPublic    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  links       PlaylistTag[]
+}
+
+model Tag {
+  id    String        @id @default(cuid())
+  name  String        @unique
+  usage Int           @default(0)
+  links PlaylistTag[]
+}
+
+model PlaylistTag {
+  playlistId String
+  tagId      String
+  playlist   Playlist @relation(fields: [playlistId], references: [id])
+  tag        Tag      @relation(fields: [tagId], references: [id])
+
+  @@id([playlistId, tagId])
+}
