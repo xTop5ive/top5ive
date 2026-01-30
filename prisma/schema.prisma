@@ -15,6 +15,7 @@ model Profile {
   bio       String?
   createdAt DateTime @default(now())
   playlists Playlist[]
+  likes     Like[]
 }
 
 model Playlist {
@@ -28,6 +29,7 @@ model Playlist {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   links       PlaylistTag[]
+  likes       Like[]
 }
 
 model Tag {
@@ -44,4 +46,15 @@ model PlaylistTag {
   tag        Tag      @relation(fields: [tagId], references: [id])
 
   @@id([playlistId, tagId])
+}
+model Like {
+  id         String   @id @default(cuid())
+  playlistId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  playlist   Playlist @relation(fields: [playlistId], references: [id])
+  user       Profile  @relation(fields: [userId], references: [id])
+
+  @@unique([playlistId, userId])
 }
