@@ -1,81 +1,89 @@
+// app/api/playlists/[id]/tracks/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase-server';
 
-// quick provider parser (no external API calls needed)
-function parseSource(rawUrl: string): { source: 'youtube' | 'spotify' | 'link', externalId?: string } {
-  try {
-    const url = new URL(rawUrl);
-
-    // YouTube
-    if (url.hostname.includes('youtube.com')) {
-      const id = url.searchParams.get('v') || undefined;
-      return { source: 'youtube', externalId: id };
-    }
-    if (url.hostname === 'youtu.be') {
-      const id = url.pathname.slice(1) || undefined;
-      return { source: 'youtube', externalId: id };
-    }
-
-    // Spotify
-    if (url.hostname.includes('open.spotify.com') && url.pathname.startsWith('/track/')) {
-      const id = url.pathname.split('/')[2] || undefined;
-      return { source: 'spotify', externalId: id };
-    }
-
-    // Fallback: just a generic link
-    return { source: 'link' };
-  } catch {
-    return { source: 'link' };
-  }
-}
-
-// POST /api/playlists/:id/tracks
-export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> } // Correct for Next.js 15/16
+) {
   const { id } = await ctx.params;
 
-  // auth
+  // 1. Auth Check
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
 
-  // ownership
-  const pl = await prisma.playlist.findUnique({ where: { id }, select: { ownerId: true } });
-  if (!pl) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  if (pl.ownerId !== user.id) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-
-  // read form
-  const form = await request.formData();
-  const url = String(form.get('url') || '').trim();
-  const title = String(form.get('title') || '').trim();
-  const artist = String(form.get('artist') || '').trim();
-
-  if (!url) return NextResponse.json({ error: 'missing url' }, { status: 400 });
-  if (!title) return NextResponse.json({ error: 'missing title' }, { status: 400 });
-
-  // figure out provider + external id
-  const parsed = parseSource(url);
-
-  // next position
-  const agg = await prisma.track.aggregate({
-    where: { playlistId: id },
-    _max: { position: true },
-  });
-  const nextPos = (agg._max.position ?? 0) + 1;
-
-  // insert
-  const t = await prisma.track.create({
-    data: {
-      playlistId: id,
-      source: parsed.source,
-      externalId: parsed.externalId ?? null,
-      url,
-      title,
-      artist: artist || null,
-      position: nextPos,
-      addedBy: user.id,
-    },
+  // 2. Ownership Check (Efficient: select only what you need)
+  const pl = await prisma.playlist.findUnique({
+    where: { id },
+    select: { ownerId: true },
   });
 
-  return NextResponse.json({ ok: true, id: t.id });
+  if (!pl) return NextResponse.json({ error: 'Playlist not found' }, { status: 404 });
+  if (pl.ownerId !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  // 3. Robust Body Parsing
+  let body: any = {};
+  const ct = req.headers.get('content-type') || '';
+  
+  if (ct.includes('application/json')) {
+    body = await req.json();
+  } else {
+    const form = await req.formData();
+    body = Object.fromEntries(form.entries()); // Cleaner form-data parsing
+  }
+
+  const title = String(body.title ?? '').trim();
+  const url = String(body.url ?? '').trim();
+
+  // 4. Input Validation
+  if (!title || !url) {
+    return NextResponse.json({ error: 'Title and URL are required' }, { status: 400 });
+  }
+  
+  try {
+    new URL(url); // valid URL check
+  } catch (e) {
+    return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
+  }
+
+  // 5. Position Logic
+  // If manual position provided, use it. Otherwise, calc next.
+  let position: number;
+  
+  if (body.position && !isNaN(Number(body.position))) {
+    position = Number(body.position);
+  } else {
+    // Find last track
+    const lastTrack = await prisma.track.findFirst({
+      where: { playlistId: id },
+      orderBy: { position: 'desc' },
+      select: { position: true }
+    });
+    position = (lastTrack?.position ?? 0) + 1;
+  }
+
+  // 6. Execution
+  try {
+    const track = await prisma.track.create({
+      data: {
+        playlistId: id,
+        title,
+        url,
+        artist: body.artist ? String(body.artist).trim() : null,
+        bpm: body.bpm ? Number(body.bpm) : null,
+        key: body.key ? String(body.key).trim() : null,
+        position,
+      },
+    });
+
+    return NextResponse.json({ ok: true, track }, { status: 201 });
+  } catch (error) {
+    console.error('Prisma Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to create track. ensure Prisma Client is generated.' }, 
+      { status: 500 }
+    );
+  }
 }

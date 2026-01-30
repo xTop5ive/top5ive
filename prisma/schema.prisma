@@ -30,6 +30,7 @@ model Playlist {
   updatedAt   DateTime     @updatedAt
   links       PlaylistTag[]
   likes       Like[]
+  tracks      Track[]
 }
 
 model Tag {
@@ -42,7 +43,7 @@ model Tag {
 model PlaylistTag {
   playlistId String
   tagId      String
-  playlist   Playlist @relation(fields: [playlistId], references: [id])
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
   tag        Tag      @relation(fields: [tagId], references: [id])
 
   @@id([playlistId, tagId])
@@ -53,8 +54,24 @@ model Like {
   userId     String
   createdAt  DateTime @default(now())
 
-  playlist   Playlist @relation(fields: [playlistId], references: [id])
-  user       Profile  @relation(fields: [userId], references: [id])
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  user       Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([playlistId, userId])
+}
+model Track {
+  id         String   @id @default(cuid())
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  position   Int      @default(1)
+  title      String
+  artist     String?
+  url        String
+  bpm        Int?
+  key        String?
+
+  createdAt  DateTime @default(now())
+
+  @@index([playlistId, position])
 }
