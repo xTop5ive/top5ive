@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase-server';
 import LikeButton from '@/components/LikeButton';
+import ShareButton from '@/components/ShareButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,14 +12,17 @@ type SP = { [k: string]: string | string[] | undefined };
 export default async function ExplorePage({ searchParams }: { searchParams: Promise<SP> }) {
   // Next 16: searchParams is a Promise
   const sp = await searchParams;
+
   const qRaw = typeof sp?.q === 'string' ? sp.q : '';
   const q = qRaw.trim();
+
   const tagsParam = typeof sp?.tags === 'string' ? sp.tags : '';
-  const sortParam = typeof sp?.sort === 'string' ? sp.sort : '';
-  const sort = sortParam === 'top' ? 'top' : 'new';
   const tagNames = tagsParam
     ? tagsParam.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
     : [];
+
+  const sortParam = typeof sp?.sort === 'string' ? sp.sort : '';
+  const sort: 'new' | 'top' = sortParam === 'top' ? 'top' : 'new';
 
   // current user (for pre-marking likes)
   let userId: string | null = null;
@@ -40,25 +44,28 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
     ];
   }
   if (tagNames.length) {
+    // join/filter via your PlaylistTag relation alias "links"
     where.links = { some: { tag: { name: { in: tagNames } } } };
   }
 
   const playlists = await prisma.playlist.findMany({
     where,
-    orderBy: sort === 'top'
-      ? [{ likes: { _count: 'desc' } }, { createdAt: 'desc' }]
-      : [{ createdAt: 'desc' }],
+    orderBy:
+      sort === 'top'
+        ? [{ likes: { _count: 'desc' } }, { createdAt: 'desc' }]
+        : [{ createdAt: 'desc' }],
     take: 24,
     include: {
       owner: { select: { handle: true } },
       _count: { select: { likes: true } },
       likes: { where: { userId: userId ?? '____no_user____' }, select: { id: true } },
-      links: { include: { tag: true } },
+      links: { include: { tag: true } }, // Tag chips
     },
   });
 
   return (
     <main className="max-w-5xl mx-auto p-6">
+      {/* Search */}
       <form className="mb-4 flex gap-2" action="/explore">
         <input
           name="q"
@@ -86,13 +93,17 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
             <>
               <Link
                 href={mk('new')}
-                className={`px-3 py-1 rounded border border-white/10 ${sort === 'new' ? 'bg-white/15' : 'hover:bg-white/10'}`}
+                className={`px-3 py-1 rounded border border-white/10 ${
+                  sort === 'new' ? 'bg-white/15' : 'hover:bg-white/10'
+                }`}
               >
                 Newest
               </Link>
               <Link
                 href={mk('top')}
-                className={`px-3 py-1 rounded border border-white/10 ${sort === 'top' ? 'bg-white/15' : 'hover:bg-white/10'}`}
+                className={`px-3 py-1 rounded border border-white/10 ${
+                  sort === 'top' ? 'bg-white/15' : 'hover:bg-white/10'
+                }`}
               >
                 Most liked
               </Link>
@@ -101,7 +112,7 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
         })()}
       </div>
 
-      {/* Active filters */}
+      {/* Active tag filters */}
       {tagNames.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
           <span className="text-white/60">Filters:</span>
@@ -122,14 +133,27 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
               </Link>
             );
           })}
-          <Link href={`/explore?sort=${sort}`} className="ml-2 underline text-white/70 hover:text-white">
+          <Link
+            href={`/explore?sort=${sort}`}
+            className="ml-2 underline text-white/70 hover:text-white"
+          >
             Clear filters
           </Link>
         </div>
       )}
 
-      <h1 className="text-2xl font-semibold mb-4">Latest public playlists</h1>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-semibold">Latest public playlists</h1>
+        <a
+          href="/new"
+          className="text-sm rounded border border-white/15 px-3 py-1 hover:bg-white/10"
+        >
+          New playlist
+        </a>
+      </div>
 
+      {/* Cards */}
       <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {playlists.map((p) => (
           <li key={p.id} className="rounded border border-white/10 p-4">
@@ -140,7 +164,7 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
                   alt={`${p.title} cover`}
                   width={64}
                   height={64}
-                  className="w-16 h-16 rounded object-cover fx-shrink-0"
+                  className="w-16 h-16 rounded object-cover flex-shrink-0"
                   unoptimized
                 />
               ) : (
@@ -153,17 +177,26 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
                 <Link href={`/p/${p.id}`} className="block">
                   <div className="font-medium truncate">{p.title}</div>
                   {p.description && (
-                    <div className="text-sm text-white/60 line-clamp-2">{p.description}</div>
+                    <div className="text-sm text-white/60 line-clamp-2">
+                      {p.description}
+                    </div>
                   )}
                 </Link>
+
                 {p.owner?.handle && (
                   <div className="mt-1 text-xs text-white/60">
-                    by <Link className="underline hover:text-white" href={`/u/${p.owner.handle}`}>@{p.owner.handle}</Link>
+                    by{' '}
+                    <Link
+                      className="underline hover:text-white"
+                      href={`/u/${p.owner.handle}`}
+                    >
+                      @{p.owner.handle}
+                    </Link>
                   </div>
                 )}
 
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {p.links?.map((l, i) => {
+                  {p.links?.map((l: any, i: number) => {
                     const tag = l.tag.name.toLowerCase();
                     const nextSet = Array.from(new Set([...(tagNames || []), tag]));
                     const params = new URLSearchParams();
@@ -173,7 +206,7 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
                     const href = `/explore?${params.toString()}`;
                     return (
                       <Link
-                        key={`${l.id}-${i}`}
+                        key={`${l.id ?? tag}-${i}`}
                         href={href}
                         className="text-xs px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20"
                       >
@@ -184,11 +217,14 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
                 </div>
               </div>
 
-              <LikeButton
-                playlistId={p.id}
-                initialCount={p._count.likes}
-                initiallyLiked={(p.likes?.length ?? 0) > 0}
-              />
+              <div className="flex flex-col items-end gap-1">
+                <LikeButton
+                  playlistId={p.id}
+                  initialCount={p._count.likes}
+                  initiallyLiked={(p.likes?.length ?? 0) > 0}
+                />
+                <ShareButton href={`/p/${p.id}`} />
+              </div>
             </div>
           </li>
         ))}

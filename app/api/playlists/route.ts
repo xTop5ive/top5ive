@@ -3,6 +3,15 @@ import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase-server';
 import { getCoverFromLink } from '@/lib/cover';
 
+function norm(t: string) {
+  return t
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9 &-]/gi, '')
+    .slice(0, 24);
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -13,44 +22,55 @@ export async function POST(request: Request) {
   const description = String(form.get('description') || '').trim();
   const isPublic = form.get('isPublic') === 'on';
   const source = String(form.get('source') || '').trim();
-  const rawTags = String(form.get('tags') || ''); // "chill, r&b, study"
+  const rawTags = String(form.get('tags') || '');
 
   if (!title) return NextResponse.redirect(new URL('/dashboard', request.url));
 
-  // optional cover
   let coverUrl: string | null = null;
   if (source) coverUrl = await getCoverFromLink(source);
 
-  // create playlist first
-  const playlist = await prisma.playlist.create({
-    data: {
-      title,
-      description: description || null,
-      isPublic,
-      ownerId: user.id,
-      coverUrl: coverUrl || null,
+  // normalize, dedupe, limit
+  const tagNames = Array.from(
+    new Set(
+      rawTags
+        .split(',')
+        .map(norm)
+        .filter(Boolean)
+    )
+  ).slice(0, 8);
+
+  await prisma.$transaction(async (tx) => {
+    const playlist = await tx.playlist.create({
+      data: {
+        title,
+        description: description || null,
+        isPublic,
+        ownerId: user.id,
+        coverUrl: coverUrl || null,
+      },
+    });
+
+    if (tagNames.length) {
+      const tags = await Promise.all(
+        tagNames.map((name) =>
+          tx.tag.upsert({
+            where: { name },
+            update: { usage: { increment: 1 } },
+            create: { name, usage: 1 },
+          })
+        )
+      );
+
+      await tx.playlistTag.createMany({
+        data: tags.map((t) => ({
+          playlistId: playlist.id,
+          tagId: t.id,
+        })),
+        skipDuplicates: true,
+      });
     }
   });
 
-  // parse tags, lowercase, trim, dedupe
-  const tagNames = Array.from(new Set(
-    rawTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
-  ));
-
-  // upsert each tag and link it
-  for (const name of tagNames) {
-    const tag = await prisma.tag.upsert({
-      where: { name },
-      update: { usage: { increment: 1 } },
-      create: { name, usage: 1 },
-    });
-    // connect in join table
-    await prisma.playlistTag.upsert({
-      where: { playlistId_tagId: { playlistId: playlist.id, tagId: tag.id } },
-      update: {},
-      create: { playlistId: playlist.id, tagId: tag.id },
-    });
-  }
-
-  return NextResponse.redirect(new URL('/dashboard', request.url));
+  // 303 avoids resubmitting the form on back/refresh
+  return NextResponse.redirect(new URL(`/p/${playlist.id}?created=1`, request.url));
 }
