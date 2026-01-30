@@ -42,7 +42,9 @@ async function createPlaylist(formData: FormData) {
   // 2) optional cover upload to Supabase Storage "covers" bucket
   if (file && file.size > 0) {
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const path = `covers/${playlist.id}-${Date.now()}.${ext}`;
+    const path = `${playlist.id}-${Date.now()}.${ext}`;
+  
+    // upload to covers bucket
     const { error: upErr } = await supabase.storage
       .from('covers')
       .upload(path, file, {
@@ -50,6 +52,7 @@ async function createPlaylist(formData: FormData) {
         upsert: true,
         contentType: file.type || undefined,
       });
+  
     if (!upErr) {
       const { data } = supabase.storage.from('covers').getPublicUrl(path);
       if (data?.publicUrl) {
@@ -58,6 +61,9 @@ async function createPlaylist(formData: FormData) {
           data: { coverUrl: data.publicUrl },
         });
       }
+    } else {
+      // helps you debug in dev
+      console.error('upload error', upErr);
     }
   }
 

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase-server';
 import { getCoverFromLink } from '@/lib/cover';
 
+// normalize a single tag
 function norm(t: string) {
   return t
     .trim()
@@ -14,22 +15,37 @@ function norm(t: string) {
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL('/sign-in', request.url));
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.redirect(new URL('/sign-in', request.url));
+  }
 
   const form = await request.formData();
-  const title = String(form.get('title') || '').trim();
-  const description = String(form.get('description') || '').trim();
+  const title = String(form.get('title') ?? '').trim();
+  const description = String(form.get('description') ?? '').trim();
   const isPublic = form.get('isPublic') === 'on';
-  const source = String(form.get('source') || '').trim();
-  const rawTags = String(form.get('tags') || '');
+  const source = String(form.get('source') ?? '').trim();
+  const rawTags = String(form.get('tags') ?? '');
 
-  if (!title) return NextResponse.redirect(new URL('/dashboard', request.url));
+  if (!title) {
+    // nothing to save, bounce back
+    return NextResponse.redirect(new URL('/dashboard', request.url), { status: 303 });
+  }
 
+  // optional cover (derive from a link the user pasted)
   let coverUrl: string | null = null;
-  if (source) coverUrl = await getCoverFromLink(source);
+  if (source) {
+    try {
+      coverUrl = await getCoverFromLink(source);
+    } catch {
+      // ignore cover fetch failures
+      coverUrl = null;
+    }
+  }
 
-  // normalize, dedupe, limit
+  // normalize, dedupe, and cap at 8 tags
   const tagNames = Array.from(
     new Set(
       rawTags
@@ -39,7 +55,8 @@ export async function POST(request: Request) {
     )
   ).slice(0, 8);
 
-  await prisma.$transaction(async (tx) => {
+  // Do the write in a single transaction and RETURN the new playlist id
+  const playlistId = await prisma.$transaction(async (tx) => {
     const playlist = await tx.playlist.create({
       data: {
         title,
@@ -62,15 +79,14 @@ export async function POST(request: Request) {
       );
 
       await tx.playlistTag.createMany({
-        data: tags.map((t) => ({
-          playlistId: playlist.id,
-          tagId: t.id,
-        })),
+        data: tags.map((t) => ({ playlistId: playlist.id, tagId: t.id })),
         skipDuplicates: true,
       });
     }
+
+    return playlist.id;
   });
 
-  // 303 avoids resubmitting the form on back/refresh
-  return NextResponse.redirect(new URL(`/p/${playlist.id}?created=1`, request.url));
+  // 303 avoids resubmitting the form on refresh/back
+  return NextResponse.redirect(new URL(`/p/${playlistId}?created=1`, request.url), { status: 303 });
 }

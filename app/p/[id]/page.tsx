@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
+import DeleteButton from '@/components/DeleteButton';
+import { createClient } from '@/lib/supabase-server';
 
 export default async function Page(
   { params }: { params: Promise<{ id: string }> }
@@ -18,6 +20,9 @@ export default async function Page(
   const host = h.get('host') || 'localhost:3000';
   const proto = h.get('x-forwarded-proto') || 'http';
   const share = `${proto}://${host}/p/${p.id}`;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const isOwner = user?.id === p.ownerId || user?.id === p.owner?.id;
 
   return (
     <main className="p-8 space-y-4 max-w-3xl">
@@ -26,6 +31,10 @@ export default async function Page(
       <div className="text-sm text-gray-500">
         by {p.owner.handle} · {p.isPublic ? 'Public' : 'Private'}
       </div>
+      <div className="flex items-center gap-2 mb-4">
+      <a href="/explore" className="underline text-white/70 hover:text-white">← Back to Explore</a>
+        {isOwner && <DeleteButton id={playlist.id} />}
+        </div>
       {p.coverUrl ? (
         <img src={p.coverUrl} alt="" className="w-full max-w-md rounded object-cover border" />
       ) : null}
