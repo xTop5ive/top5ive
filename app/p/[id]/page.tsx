@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
+import AddTrackForm from "@/components/AddTrackForm";
 
 export default async function Page(
   { params }: { params: Promise<{ id: string }> }
@@ -40,6 +41,7 @@ export default async function Page(
         </div>
       ) : null}
       <div className="text-sm text-gray-500">Share: <span className="underline">{share}</span></div>
+      <AddTrackForm playlistId={p.id} />
     </main>
   );
 }

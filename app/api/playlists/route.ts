@@ -8,6 +8,20 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(new URL('/sign-in', request.url));
 
+  // Ensure the user's Profile exists (prevents FK errors on Playlist.ownerId)
+  const handleBase = (user.email?.split('@')[0] || `user_${user.id.slice(0, 8)}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '');
+
+  // Add a short suffix to reduce collisions if handles are unique
+  const handle = `${handleBase}_${user.id.slice(-4)}`;
+
+  await prisma.profile.upsert({
+    where: { id: user.id },
+    update: {},
+    create: { id: user.id, handle },
+  });
+
   const form = await request.formData();
   const title = String(form.get('title') || '').trim();
   const description = String(form.get('description') || '').trim();
