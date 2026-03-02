@@ -8,26 +8,26 @@ generator client {
 }
 
 model Profile {
-  id        String   @id          // Supabase auth user id (UUID)
-  handle    String   @unique
+  id        String     @id // Supabase auth user id (UUID)
+  handle    String     @unique
   name      String
   avatarUrl String?
   bio       String?
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now())
   playlists Playlist[]
   likes     Like[]
 }
 
 model Playlist {
-  id          String       @id @default(cuid())
+  id          String        @id @default(cuid())
   ownerId     String
-  owner       Profile      @relation(fields: [ownerId], references: [id])
+  owner       Profile       @relation(fields: [ownerId], references: [id])
   title       String
   coverUrl    String?
   description String?
-  isPublic    Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  isPublic    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
   links       PlaylistTag[]
   likes       Like[]
 }
@@ -47,14 +47,15 @@ model PlaylistTag {
 
   @@id([playlistId, tagId])
 }
+
 model Like {
   id         String   @id @default(cuid())
   playlistId String
   userId     String
   createdAt  DateTime @default(now())
 
-  playlist   Playlist @relation(fields: [playlistId], references: [id])
-  user       Profile  @relation(fields: [userId], references: [id])
+  playlist Playlist @relation(fields: [playlistId], references: [id])
+  user     Profile  @relation(fields: [userId], references: [id])
 
   @@unique([playlistId, userId])
 }
