@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 
-export async function GET(request: Request) {
-  const supabase = await createClient();               // await the async cookies() client
-  const { error } = await supabase.auth.exchangeCodeForSession(request.url); // pass full URL
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const next = url.searchParams.get('next') ?? '/dashboard';
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.exchangeCodeForSession(req.url);
 
   if (error) {
-    const url = new URL('/', request.url);
-    url.searchParams.set('auth_error', error.message);
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL(`/sign-in?error=${encodeURIComponent(error.message)}`, url));
   }
 
-  return NextResponse.redirect(new URL('/', request.url));
+  return NextResponse.redirect(new URL(next, url));
 }

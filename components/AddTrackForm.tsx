@@ -30,7 +30,6 @@ export default function AddTrackForm({ playlistId }: { playlistId: string }) {
       return;
     }
 
-    // clear form
     setTitle("");
     setArtist("");
     setUrl("");
