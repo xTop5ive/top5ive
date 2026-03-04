@@ -1,58 +1,34 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase-browser';
+import Link from 'next/link';
 
-export default function SignIn() {
-  const supabase = createClient();
-  const router = useRouter();
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-
-    // If the magic link brought us back with a code, exchange it for a session
-    if (code) {
-      (async () => {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-        if (error) {
-          alert(error.message);
-          return;
-        }
-
-        // clean URL + go where you want
-        router.replace('/dashboard');
-      })();
-    }
-  }, [supabase, router]);
-
-  async function signInWithEmail() {
-    const email = prompt('Enter your email for a magic link:') || '';
-    if (!email) return;
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        // keep it on /sign-in so the same page can read ?code=
-        emailRedirectTo: `${window.location.origin}/sign-in`,
-      },
-    });
-
-    if (error) alert(error.message);
-    else alert('Check your email for the link');
-  }
-
+export default function SignInPage() {
   return (
-    <main className="min-h-screen p-8">
-      <h1 className="text-2xl font-bold">Sign in</h1>
-      <button
-        onClick={signInWithEmail}
-        className="mt-4 px-4 py-2 rounded bg-black text-white"
-      >
-        Continue with email
-      </button>
+    <main className="min-h-screen px-5 py-10">
+      <div className="max-w-md mx-auto">
+        <div className="card p-6">
+          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+          <p className="text-white/60 mt-2">
+            Demo mode: auth is disabled while we finish the UI.
+          </p>
+
+          <div className="mt-6 space-y-3">
+            <Link href="/explore" className="btn btnPrimary w-full text-center">
+              Continue as Guest
+            </Link>
+
+            <button className="btn w-full" disabled>
+              Continue with Email (coming soon)
+            </button>
+          </div>
+
+          <div className="mt-6 text-sm text-white/60">
+            <Link href="/explore" className="underline hover:text-white">
+              Go to Explore
+            </Link>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
